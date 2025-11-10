@@ -1,0 +1,145 @@
+:root {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #0f172a;
+  background-color: #f8fafc;
+}
+
+body {
+  margin: 0;
+  background-color: #e2e8f0;
+}
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.status {
+  background-color: #fff;
+  padding: 12px 18px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.controls,
+.update-panel,
+.results {
+  background-color: #fff;
+  margin-top: 24px;
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.dataset-selector {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dataset-selector button {
+  border: 1px solid #cbd5f5;
+  border-radius: 999px;
+  padding: 8px 20px;
+  background-color: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dataset-selector .active {
+  background-color: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.filters {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.filters input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cbd5f5;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  background-color: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+
+button:disabled {
+  background-color: #94a3b8;
+}
+
+.update-panel input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cbd5f5;
+}
+
+.update-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 10px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error {
+  color: #dc2626;
+  font-weight: 600;
+}
