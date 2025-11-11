@@ -1,34 +1,72 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import csv
+import io
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Sequence, Type
+from typing import Callable, Dict, Iterable, List, Sequence
 
-from sqlalchemy.dialects.mysql import insert as mysql_insert
-from sqlalchemy.orm import Session
+from tqdm import tqdm
 
-from app.core.config import get_settings
-from app.db.session import session_scope
-from app.models import Empresa, Estabelecimento, Simples, Socio
+from app.db.postgres import get_connection
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
 @dataclass(frozen=True)
 class DatasetConfig:
     signature: str
-    model: Type
+    table: str
     columns: Sequence[str]
-    extra_handler: Callable[[dict], dict] | None = None
+    builder: Callable[[List[str]], List[str]]
+
+
+def _pad(value: str, size: int) -> str:
+    cleaned = "".join(ch for ch in value if ch.isdigit())
+    return cleaned[:size].zfill(size)
+
+
+def _build_empresas(row: List[str]) -> List[str]:
+    values = [value.strip() for value in row]
+    while len(values) < 7:
+        values.append("")
+    values[0] = _pad(values[0], 8)
+    values[4] = values[4].replace(".", "").replace(",", ".") or "0"
+    return values[:7]
+
+
+def _build_estabelecimentos(row: List[str]) -> List[str]:
+    values = [value.strip() for value in row]
+    while len(values) < 31:
+        values.append("")
+    values[0] = _pad(values[0], 8)
+    values[1] = _pad(values[1], 4)
+    values[2] = _pad(values[2], 2)
+    cnpj14 = f"{values[0]}{values[1]}{values[2]}"
+    return [cnpj14, *values[:31]]
+
+
+def _build_socios(row: List[str]) -> List[str]:
+    values = [value.strip() for value in row]
+    while len(values) < 12:
+        values.append("")
+    values[0] = _pad(values[0], 8)
+    return values[:12]
+
+
+def _build_simples(row: List[str]) -> List[str]:
+    values = [value.strip() for value in row]
+    while len(values) < 7:
+        values.append("")
+    values[0] = _pad(values[0], 8)
+    return values[:7]
 
 
 DATASETS: Dict[str, DatasetConfig] = {
     "EMPRECSV": DatasetConfig(
         signature="EMPRECSV",
-        model=Empresa,
+        table="empresas",
         columns=(
             "cnpj_basico",
             "razao_social",
@@ -38,11 +76,13 @@ DATASETS: Dict[str, DatasetConfig] = {
             "porte_empresa",
             "ente_federativo",
         ),
+        builder=_build_empresas,
     ),
     "ESTABELE": DatasetConfig(
         signature="ESTABELE",
-        model=Estabelecimento,
+        table="estabelecimentos",
         columns=(
+            "cnpj14",
             "cnpj_basico",
             "cnpj_ordem",
             "cnpj_dv",
@@ -75,10 +115,11 @@ DATASETS: Dict[str, DatasetConfig] = {
             "situacao_especial",
             "data_situacao_especial",
         ),
+        builder=_build_estabelecimentos,
     ),
     "SOCIOCSV": DatasetConfig(
         signature="SOCIOCSV",
-        model=Socio,
+        table="socios",
         columns=(
             "cnpj_basico",
             "identificador_socio",
@@ -93,10 +134,11 @@ DATASETS: Dict[str, DatasetConfig] = {
             "codigo_qualificacao_representante",
             "faixa_etaria",
         ),
+        builder=_build_socios,
     ),
     "SIMECSV": DatasetConfig(
         signature="SIMECSV",
-        model=Simples,
+        table="simples",
         columns=(
             "cnpj_basico",
             "opcao_simples",
@@ -106,6 +148,7 @@ DATASETS: Dict[str, DatasetConfig] = {
             "data_opcao_mei",
             "data_exclusao_mei",
         ),
+        builder=_build_simples,
     ),
 }
 
@@ -119,55 +162,64 @@ def identify_dataset(file_path: Path) -> DatasetConfig | None:
 
 
 class Loader:
-    """Loads extracted CSV/TXT files into MySQL in batches."""
-
-    def __init__(self, batch_size: int | None = None) -> None:
-        self.batch_size = batch_size or settings.batch_size
-
     def load_files(self, files: Iterable[Path]) -> None:
         for file_path in files:
             dataset = identify_dataset(file_path)
             if not dataset:
-                logger.info("Arquivo %s ignorado (dataset desconhecido)", file_path.name)
+                logger.info("File %s ignored (unknown dataset)", file_path.name)
                 continue
-            logger.info("Iniciando carga de %s", file_path.name)
-            self._load_file(file_path, dataset)
+            logger.info("Copying %s into %s", file_path.name, dataset.table)
+            self._copy_file(file_path, dataset)
 
-    def _load_file(self, file_path: Path, dataset: DatasetConfig) -> None:
-        with session_scope() as session:
-            self._stream_insert(session, file_path, dataset)
-
-    def _stream_insert(self, session: Session, file_path: Path, dataset: DatasetConfig) -> None:
-        rows_buffer: List[dict] = []
-        with open(file_path, encoding="latin-1") as handle:
-            reader = csv.reader(handle, delimiter=";", quoting=csv.QUOTE_MINIMAL)
-            for row in reader:
-                prepared = self._prepare_row(row, dataset)
-                rows_buffer.append(prepared)
-                if len(rows_buffer) >= self.batch_size:
-                    self._flush(session, dataset, rows_buffer)
-                    rows_buffer.clear()
-        if rows_buffer:
-            self._flush(session, dataset, rows_buffer)
-
-    def _prepare_row(self, row: List[str], dataset: DatasetConfig) -> dict:
-        values = [value.strip() or None for value in row]
-        mapped = dict(zip(dataset.columns, values))
-        if dataset.model is Estabelecimento:
-            mapped["cnpj"] = (
-                (mapped.get("cnpj_basico") or "")
-                + (mapped.get("cnpj_ordem") or "")
-                + (mapped.get("cnpj_dv") or "")
+    def _copy_file(self, file_path: Path, dataset: DatasetConfig) -> None:
+        with get_connection() as conn, conn.cursor() as cur, open(
+            file_path, encoding="latin-1", newline=""
+        ) as handle:
+            reader = csv.reader(handle, delimiter=";", quotechar='"')
+            copy_sql = (
+                f"COPY {dataset.table} ({', '.join(dataset.columns)}) "
+                "FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"', NULL '')"
             )
-        if dataset.model is Empresa and mapped.get("capital_social"):
-            mapped["capital_social"] = (
-                mapped["capital_social"].replace(".", "").replace(",", ".")
-            )
-        if dataset.extra_handler:
-            mapped = dataset.extra_handler(mapped)
-        return mapped
 
-    def _flush(self, session: Session, dataset: DatasetConfig, buffer: List[dict]) -> None:
-        stmt = mysql_insert(dataset.model).prefix_with("IGNORE").values(buffer)
-        session.execute(stmt)
-        logger.info("Inseridos %s registros em %s", len(buffer), dataset.model.__tablename__)
+            with cur.copy(copy_sql) as copy, tqdm(
+                desc=f"{dataset.table}:{file_path.name}", unit="rows"
+            ) as progress:
+                buffer = io.StringIO()
+                writer = csv.writer(buffer, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+                batch = []
+                for row in reader:
+                    if not row or all(not field.strip() for field in row):
+                        continue
+
+                    if len(row) == 1 and "\t" in row[0]:
+                        row = row[0].split("\t")
+
+                    try:
+                        built = dataset.builder(row)
+                    except Exception:
+                        logger.exception("Failed to parse row in %s: %s", file_path.name, row[:3])
+                        continue
+
+                    batch.append(built)
+                    progress.update()
+
+                    if len(batch) >= 5000:
+                        self._write_batch(writer, buffer, copy, batch)
+                        batch = []
+
+                # Write remaining rows
+                if batch:
+                    self._write_batch(writer, buffer, copy, batch)
+
+            conn.commit()
+            logger.info("Finished loading %s", file_path.name)
+
+    @staticmethod
+    def _write_batch(writer: csv.writer, buffer: io.StringIO, copy, batch: list) -> None:
+        buffer.seek(0)
+        buffer.truncate()
+        for row in batch:
+            writer.writerow(row)
+        buffer.seek(0)
+        copy.write(buffer.read())

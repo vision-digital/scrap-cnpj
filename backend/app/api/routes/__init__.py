@@ -1,9 +1,10 @@
-from . import export, health, search, update, version
+from . import export, health, search, stats, update, version
 
 __all__ = [
     "export",
     "health",
     "search",
+    "stats",
     "update",
     "version",
 ]

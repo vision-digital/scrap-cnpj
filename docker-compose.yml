@@ -1,29 +1,21 @@
-version: '3.9'
-
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: cnpj-mysql
+  postgres:
+    image: postgres:16
+    container_name: cnpj-postgres
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: cnpj
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_USER: cnpj
-      MYSQL_PASSWORD: cnpj
+      POSTGRES_DB: cnpj
+      POSTGRES_USER: cnpj
+      POSTGRES_PASSWORD: cnpj
     ports:
-      - '3306:3306'
+      - "5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent || mysqladmin ping -h localhost --silent",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U cnpj"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 40s
+      retries: 12
 
   backend:
     build: ./backend
@@ -31,15 +23,14 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      SCRAP_MYSQL_HOST: mysql
       SCRAP_DATA_DIR: /data
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
     volumes:
       - ./data:/data
     ports:
-      - '8000:8000'
+      - "8000:8000"
 
   frontend:
     build: ./frontend
@@ -50,7 +41,7 @@ services:
     depends_on:
       - backend
     ports:
-      - '5173:80'
+      - "5173:80"
 
 volumes:
-  mysql_data:
+  postgres_data:

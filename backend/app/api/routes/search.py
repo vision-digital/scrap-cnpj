@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Iterable, Sequence, Type
+from typing import Type
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -19,9 +19,20 @@ from app.schemas.entities import (
 router = APIRouter(prefix="/search", tags=["busca"])
 
 
+def _paginate(stmt, schema: Type, db: Session, page: int, page_size: int) -> PaginatedResponse:
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    items = (
+        db.execute(stmt.offset((page - 1) * page_size).limit(page_size))
+        .scalars()
+        .all()
+    )
+    payload = [schema.model_validate(item).model_dump() for item in items]
+    return PaginatedResponse(total=total, page=page, page_size=page_size, items=payload)
+
+
 @router.get("/empresas", response_model=PaginatedResponse)
 def search_empresas(
-    razao_social: str | None = Query(None, description="Filtro por razão social"),
+    razao_social: str | None = Query(None, description="Filtro por razao social"),
     natureza_juridica: str | None = Query(None),
     porte: str | None = Query(None),
     page: int = Query(1, ge=1),
@@ -35,7 +46,7 @@ def search_empresas(
         stmt = stmt.where(Empresa.natureza_juridica == natureza_juridica)
     if porte:
         stmt = stmt.where(Empresa.porte_empresa == porte)
-    return _paginate(stmt, EmpresaSchema, db, page, page_size)
+    return _paginate(stmt.order_by(Empresa.cnpj_basico), EmpresaSchema, db, page, page_size)
 
 
 @router.get("/estabelecimentos", response_model=PaginatedResponse)
@@ -51,7 +62,7 @@ def search_estabelecimentos(
 ) -> PaginatedResponse:
     stmt = select(Estabelecimento)
     if cnpj:
-        stmt = stmt.where(Estabelecimento.cnpj == cnpj)
+        stmt = stmt.where(Estabelecimento.cnpj14 == cnpj)
     if nome_fantasia:
         stmt = stmt.where(Estabelecimento.nome_fantasia.ilike(f"%{nome_fantasia}%"))
     if uf:
@@ -60,7 +71,7 @@ def search_estabelecimentos(
         stmt = stmt.where(Estabelecimento.municipio == municipio)
     if cnae:
         stmt = stmt.where(Estabelecimento.cnae_fiscal_principal == cnae)
-    return _paginate(stmt, EstabelecimentoSchema, db, page, page_size)
+    return _paginate(stmt.order_by(Estabelecimento.cnpj14), EstabelecimentoSchema, db, page, page_size)
 
 
 @router.get("/socios", response_model=PaginatedResponse)
@@ -76,7 +87,7 @@ def search_socios(
         stmt = stmt.where(Socio.cnpj_basico == cnpj_basico)
     if nome:
         stmt = stmt.where(Socio.nome_socio.ilike(f"%{nome}%"))
-    return _paginate(stmt, SocioSchema, db, page, page_size)
+    return _paginate(stmt.order_by(Socio.id), SocioSchema, db, page, page_size)
 
 
 @router.get("/simples", response_model=PaginatedResponse)
@@ -95,15 +106,4 @@ def search_simples(
         stmt = stmt.where(Simples.opcao_simples == opcao_simples)
     if opcao_mei:
         stmt = stmt.where(Simples.opcao_mei == opcao_mei)
-    return _paginate(stmt, SimplesSchema, db, page, page_size)
-
-
-def _paginate(stmt, schema: Type, db: Session, page: int, page_size: int) -> PaginatedResponse:
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    items = (
-        db.execute(stmt.offset((page - 1) * page_size).limit(page_size))
-        .scalars()
-        .all()
-    )
-    payload = [schema.model_validate(item).model_dump() for item in items]
-    return PaginatedResponse(total=total, page=page, page_size=page_size, items=payload)
+    return _paginate(stmt.order_by(Simples.cnpj_basico), SimplesSchema, db, page, page_size)

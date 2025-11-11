@@ -19,7 +19,7 @@ class EmpresaSchema(BaseModel):
 
 
 class EstabelecimentoSchema(BaseModel):
-    cnpj: str
+    cnpj14: str
     cnpj_basico: str
     nome_fantasia: str | None = None
     situacao_cadastral: str | None = None

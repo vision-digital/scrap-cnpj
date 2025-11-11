@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime
-from typing import Iterable, Type
+from typing import Dict, Iterable
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -19,7 +19,24 @@ from app.schemas.entities import (
     SocioSchema,
 )
 
-router = APIRouter(prefix="/export", tags=["relatórios"])
+router = APIRouter(prefix="/export", tags=["relatorios"])
+
+
+def _stream_models(db: Session, stmt, schema) -> Iterable[bytes]:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=";")
+    columns = list(schema.model_fields.keys())
+    writer.writerow(columns)
+    yield buffer.getvalue().encode("utf-8")
+    buffer.seek(0)
+    buffer.truncate(0)
+    stream = db.execute(stmt).scalars()
+    for obj in stream:
+        data = schema.model_validate(obj).model_dump()
+        writer.writerow([data.get(col, "") for col in columns])
+        yield buffer.getvalue().encode("utf-8")
+        buffer.seek(0)
+        buffer.truncate(0)
 
 
 @router.get("/empresas")
@@ -36,7 +53,12 @@ def export_empresas(
         stmt = stmt.where(Empresa.natureza_juridica == natureza_juridica)
     if porte:
         stmt = stmt.where(Empresa.porte_empresa == porte)
-    return _build_csv_response(db, stmt, EmpresaSchema, filename_prefix="empresas")
+    filename = f"empresas_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
+    return StreamingResponse(
+        _stream_models(db, stmt, EmpresaSchema),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/estabelecimentos")
@@ -53,7 +75,12 @@ def export_estabelecimentos(
         stmt = stmt.where(Estabelecimento.municipio == municipio)
     if cnae:
         stmt = stmt.where(Estabelecimento.cnae_fiscal_principal == cnae)
-    return _build_csv_response(db, stmt, EstabelecimentoSchema, filename_prefix="estabelecimentos")
+    filename = f"estabelecimentos_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
+    return StreamingResponse(
+        _stream_models(db, stmt, EstabelecimentoSchema),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/socios")
@@ -64,7 +91,12 @@ def export_socios(
     stmt = select(Socio)
     if cnpj_basico:
         stmt = stmt.where(Socio.cnpj_basico == cnpj_basico)
-    return _build_csv_response(db, stmt, SocioSchema, filename_prefix="socios")
+    filename = f"socios_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
+    return StreamingResponse(
+        _stream_models(db, stmt, SocioSchema),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/simples")
@@ -78,30 +110,9 @@ def export_simples(
         stmt = stmt.where(Simples.opcao_simples == opcao_simples)
     if opcao_mei:
         stmt = stmt.where(Simples.opcao_mei == opcao_mei)
-    return _build_csv_response(db, stmt, SimplesSchema, filename_prefix="simples")
-
-
-def _build_csv_response(db: Session, stmt, schema: Type, filename_prefix: str) -> StreamingResponse:
-    filename = f"{filename_prefix}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
-
-    def streamer() -> Iterable[bytes]:
-        header = list(schema.model_fields.keys())
-        buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=header, delimiter=";")
-        writer.writeheader()
-        yield buffer.getvalue().encode("utf-8")
-        buffer.seek(0)
-        buffer.truncate(0)
-        result = db.execute(stmt.execution_options(yield_per=5_000))
-        for row in result.scalars():
-            data = schema.model_validate(row).model_dump()
-            writer.writerow(data)
-            yield buffer.getvalue().encode("utf-8")
-            buffer.seek(0)
-            buffer.truncate(0)
-
+    filename = f"simples_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
     return StreamingResponse(
-        streamer(),
+        _stream_models(db, stmt, SimplesSchema),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

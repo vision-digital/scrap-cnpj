@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -7,41 +7,41 @@ const datasetConfigs = {
   empresas: {
     label: 'Empresas',
     fields: [
-      { name: 'razao_social', label: 'Razão Social', placeholder: 'Nome parcial' },
-      { name: 'natureza_juridica', label: 'Natureza Jurídica', placeholder: 'XXXX' },
+      { name: 'razao_social', label: 'Razao social', placeholder: 'Nome parcial' },
+      { name: 'natureza_juridica', label: 'Natureza juridica', placeholder: 'XXXX' },
       { name: 'porte', label: 'Porte', placeholder: '1/3/5' }
     ]
   },
   estabelecimentos: {
     label: 'Estabelecimentos',
     fields: [
-      { name: 'cnpj', label: 'CNPJ', placeholder: '14 dígitos' },
-      { name: 'nome_fantasia', label: 'Nome Fantasia', placeholder: 'Nome parcial' },
+      { name: 'cnpj', label: 'CNPJ', placeholder: '14 digitos' },
+      { name: 'nome_fantasia', label: 'Nome fantasia', placeholder: 'Nome parcial' },
       { name: 'uf', label: 'UF', placeholder: 'SP' },
-      { name: 'municipio', label: 'Município', placeholder: 'Código IBGE' },
-      { name: 'cnae', label: 'CNAE', placeholder: '7 dígitos' }
+      { name: 'municipio', label: 'Municipio', placeholder: 'Codigo IBGE' },
+      { name: 'cnae', label: 'CNAE', placeholder: '7 digitos' }
     ]
   },
   socios: {
-    label: 'Sócios',
+    label: 'Socios',
     fields: [
-      { name: 'cnpj_basico', label: 'CNPJ Básico', placeholder: '8 dígitos' },
-      { name: 'nome', label: 'Nome Sócio', placeholder: 'Nome parcial' }
+      { name: 'cnpj_basico', label: 'CNPJ basico', placeholder: '8 digitos' },
+      { name: 'nome', label: 'Nome socio', placeholder: 'Nome parcial' }
     ]
   },
   simples: {
     label: 'Simples',
     fields: [
-      { name: 'cnpj_basico', label: 'CNPJ Básico', placeholder: '8 dígitos' },
-      { name: 'opcao_simples', label: 'Opção Simples', placeholder: 'S/N' },
-      { name: 'opcao_mei', label: 'Opção MEI', placeholder: 'S/N' }
+      { name: 'cnpj_basico', label: 'CNPJ basico', placeholder: '8 digitos' },
+      { name: 'opcao_simples', label: 'Opcao Simples', placeholder: 'S/N' },
+      { name: 'opcao_mei', label: 'Opcao MEI', placeholder: 'S/N' }
     ]
   }
 } as const;
 
 const headers = {
   empresas: ['cnpj_basico', 'razao_social', 'natureza_juridica', 'porte_empresa', 'capital_social'],
-  estabelecimentos: ['cnpj', 'nome_fantasia', 'uf', 'municipio', 'cnae_fiscal_principal'],
+  estabelecimentos: ['cnpj14', 'nome_fantasia', 'uf', 'municipio', 'cnae_fiscal_principal'],
   socios: ['cnpj_basico', 'nome_socio', 'cnpj_cpf_socio', 'codigo_qualificacao_socio'],
   simples: ['cnpj_basico', 'opcao_simples', 'opcao_mei', 'data_opcao_simples']
 };
@@ -81,7 +81,7 @@ function App() {
       });
       setData(response.data);
     } catch (err) {
-      setError('Falha ao buscar dados. Confira filtros e conexão com a API.');
+      setError('Falha ao buscar dados. Confira filtros e conexao com a API.');
     } finally {
       setLoading(false);
     }
@@ -94,10 +94,10 @@ function App() {
       if (payload.release) {
         setUpdateStatus(`${payload.release} - ${payload.status}`);
       } else {
-        setUpdateStatus('Sem histórico');
+        setUpdateStatus('Sem historico');
       }
     } catch {
-      setUpdateStatus('Indisponível');
+      setUpdateStatus('Indisponivel');
     }
   }, []);
 
@@ -127,9 +127,9 @@ function App() {
       });
       setManualRelease('');
       fetchStatus();
-      alert('Atualização iniciada. Consulte o status periodicamente.');
+      alert('Atualizacao iniciada. Consulte o status periodicamente.');
     } catch {
-      alert('Não foi possível iniciar a atualização. Verifique os logs do backend.');
+      alert('Nao foi possivel iniciar a atualizacao. Verifique os logs do backend.');
     }
   };
 
@@ -138,10 +138,10 @@ function App() {
       <header>
         <div>
           <h1>Scrap CNPJ</h1>
-          <p>Consulta rápida aos dados abertos do CNPJ com atualização guiada.</p>
+          <p>Consulta rapida aos dados abertos do CNPJ com atualizacao guiada.</p>
         </div>
         <div className="status">
-          <span>Versão atual:</span>
+          <span>Versao atual:</span>
           <strong>{updateStatus}</strong>
         </div>
       </header>
@@ -185,10 +185,10 @@ function App() {
       </section>
 
       <section className="update-panel">
-        <h2>Atualização da base</h2>
+        <h2>Atualizacao da base</h2>
         <div className="update-actions">
           <input
-            placeholder="Release específica (YYYY-MM) opcional"
+            placeholder="Release especifica (YYYY-MM) opcional"
             value={manualRelease}
             onChange={(event) => setManualRelease(event.target.value)}
           />
@@ -226,8 +226,8 @@ function App() {
           <button disabled={page === 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
             Anterior
           </button>
-          <span>Página {page}</span>
-          <button onClick={() => setPage((prev) => prev + 1)}>Próxima</button>
+          <span>Pagina {page}</span>
+          <button onClick={() => setPage((prev) => prev + 1)}>Proxima</button>
         </div>
       </section>
     </div>

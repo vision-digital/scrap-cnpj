@@ -1,13 +1,11 @@
-from .base import Base
-from .entities import Empresa, Estabelecimento, Simples, Socio
-from .versioning import DataVersion, IngestionStatus
+from app.models.base import Base
+from app.models.entities import DataVersion, Empresa, Estabelecimento, Simples, Socio
 
 __all__ = [
     "Base",
     "Empresa",
     "Estabelecimento",
-    "Simples",
     "Socio",
+    "Simples",
     "DataVersion",
-    "IngestionStatus",
 ]

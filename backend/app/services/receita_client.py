@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import List
 from urllib.parse import urljoin
 
 import httpx
@@ -47,7 +47,7 @@ class ReceitaFederalClient:
     def latest_release(self) -> str:
         releases = self.list_releases()
         if not releases:
-            raise RuntimeError("Nenhuma versão disponível encontrada")
+            raise RuntimeError("Nenhuma versao disponivel encontrada")
         return releases[-1]
 
     def list_files(self, release: str) -> List[RemoteFile]:
@@ -75,7 +75,7 @@ class ReceitaFederalClient:
                 )
             )
         if not files:
-            raise RuntimeError(f"Nenhum arquivo encontrado para a versão {release}")
+            raise RuntimeError(f"Nenhum arquivo encontrado para a versao {release}")
         return files
 
     def close(self) -> None:

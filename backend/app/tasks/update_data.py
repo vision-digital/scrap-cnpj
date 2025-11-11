@@ -11,7 +11,7 @@ cli = typer.Typer(help="Atualiza o banco de dados com os arquivos mais recentes 
 def run(release: str | None = typer.Option(None, help="Release no formato YYYY-MM")) -> None:
     pipeline = Pipeline()
     version = pipeline.run(release)
-    typer.echo(f"Base atualizada para a versão {version}")
+    typer.echo(f"Base atualizada para a versao {version}")
 
 
 if __name__ == "__main__":

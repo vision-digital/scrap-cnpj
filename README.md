@@ -1,78 +1,75 @@
-# Projeto Scrap CNPJ
+Ôªø# Projeto Scrap CNPJ
 
-Pipeline completo para baixar, limpar, carregar e expor os dados p˙blicos do CNPJ da Receita Federal.
+Pipeline completo para baixar, processar e expor os dados p√∫blicos do CNPJ utilizando FastAPI, PostgreSQL e um frontend React.
 
 ## Arquitetura
 
-- **Backend (FastAPI/Python)**: orquestra downloads, extraÁ„o, carga MySQL e expıe APIs de busca/exportaÁ„o.
-- **MySQL 8**: armazenamento persistente dos datasets (Empresas, Estabelecimentos, SÛcios, Simples e versıes).
-- **Frontend (React + Vite)**: interface para filtros, exportaÁ„o e gatilho de atualizaÁ„o.
-- **Volumes**: ./data guarda tempor·rios e staging atÈ limpeza autom·tica do pipeline.
+- **Backend (FastAPI/Python)**: orquestra download, extra√ß√£o, carga (COPY no PostgreSQL) e disponibiliza APIs de busca/exporta√ß√£o.
+- **PostgreSQL 16**: armazena dezenas de milh√µes de registros com √≠ndices BTREE e GIN (pg_trgm) para consultas r√°pidas.
+- **Frontend (React + Vite)**: interface para filtros, exporta√ß√£o em CSV e acompanhamento de vers√£o/atualiza√ß√£o.
+- **Diret√≥rio `./data`**: guarda downloads/extraj√ß√µes para reaproveitamento e auditoria.
 
 ## Como executar
 
-1. Crie o arquivo .env baseado em .env.example.
-2. Inicialize os serviÁos com Docker Compose:
-   `ash
-   docker-compose up --build
-   `
-3. Acesse http://localhost:5173 para o frontend. A API estar· em http://localhost:8000.
+1. Crie o arquivo `.env` a partir de `.env.example` (credenciais do Postgres).
+2. Suba os servi√ßos:
+   ```bash
+   docker compose up --build
+   ```
+3. Frontend: `http://localhost:5173`. API: `http://localhost:8000`.
 
-## Pipeline de atualizaÁ„o
+## Pipeline de atualiza√ß√£o
 
-O pipeline implementa as etapas solicitadas:
+1. **Descoberta de release** ‚Äì l√™ o √≠ndice oficial e escolhe a pasta mais recente (ou a informada).
+2. **Download** ‚Äì todos os `.zip` s√£o armazenados em `data/raw/<release>` (reaproveitados quando j√° existirem).
+3. **Extra√ß√£o** ‚Äì os arquivos s√£o descompactados em `data/staging/<release>` (tamb√©m reutilizados se presentes).
+4. **Carga** ‚Äì o Loader percorre `EMPRECSV`, `ESTABELE`, `SOCIOCSV`, `SIMECSV` e usa `COPY ... FROM STDIN` em lotes de 50k linhas. O `tqdm` mostra progresso de cada arquivo e os logs sinalizam in√≠cio/fim/erros.
+5. **Versionamento** ‚Äì `data_versions` guarda release, status (`running/completed/failed`), timestamps e notas. Exposto por `/api/version/latest` e `/api/stats`.
+6. **Limpeza opcional** ‚Äì `raw` e `staging` permanecem por padr√£o; ajuste `SCRAP_CLEANUP_*` no `.env` para exclus√£o autom√°tica.
 
-1. **Descoberta da vers„o**: ReceitaFederalClient identifica a pasta mais recente no Ìndice oficial.
-2. **Download**: DownloadManager baixa todos os .zip da release escolhida para data/raw/<release>.
-3. **ExtraÁ„o**: Extractor descompacta (inclusive pacotes particionados) para data/staging/<release>.
-4. **Carga**: Loader lÍ os .CSV/.TXT em fluxo, aplica mapeamentos e insere em lotes (atch_size configur·vel) nas tabelas MySQL.
-5. **Versionamento**: DataVersion armazena release, status e timestamps para auditoria.
-6. **Limpeza**: diretÛrios aw e staging da release s„o removidos ao final para liberar disco.
+### Execu√ß√£o manual
 
-### ExecuÁ„o manual
-
-Use o CLI embutido:
-`ash
+```bash
 cd backend
 python -m app.tasks.update_data --release 2025-11  # opcional
-`
-Sem --release, o pipeline busca automaticamente a vers„o mais recente.
+```
 
 ### Via frontend/API
 
-- Bot„o "Verificar novidades" chama POST /api/updates/run e dispara o pipeline em background.
-- GET /api/updates/status informa release atual e progresso.
+- Bot√£o ‚ÄúVerificar novidades‚Äù ‚Üí `POST /api/updates/run`.
+- Painel consome `GET /api/updates/status` e `GET /api/stats` para progresso.
 
-## Estrutura do banco
+## Esquema (PostgreSQL)
 
-| Tabela             | Chave prim·ria      | ObservaÁıes |
-|--------------------|---------------------|-------------|
-| data_versions    | id                | HistÛrico da release carregada. |
-| empresas         | cnpj_basico       | Dados corporativos b·sicos. |
-| estabelecimentos | cnpj (14 dÌgitos) | Inclui endereÁo, CNAE, situaÁ„o e contatos. |
-| socios           | id autoincrement  | SÛcios e representantes. |
-| simples          | cnpj_basico       | SituaÁ„o no Simples/MEI. |
+| Tabela             | Campos-chave / √çndices                                        |
+|--------------------|----------------------------------------------------------------|
+| `empresas`         | `cnpj_basico` PK, BTREE para natureza/porte e GIN (pg_trgm) em raz√£o social. |
+| `estabelecimentos` | `cnpj14` PK, BTREE para UF/munic√≠pio/CNAE, GIN trigram em nome fantasia. |
+| `socios`           | PK sint√©tico, BTREE para `cnpj_basico` e documento, trigram em nome. |
+| `simples`          | `cnpj_basico` PK, BTREE para `opcao_simples/opcao_mei`. |
+| `data_versions`    | hist√≥rico das execu√ß√µes. |
 
-Os mapeamentos respeitam o layout oficial do CNPJ e podem ser estendidos para CNAEs, MunicÌpios, Motivos etc.
+As extens√µes `pg_trgm` e `btree_gin` s√£o criadas automaticamente durante o startup.
 
 ## APIs principais
 
-- GET /api/health ñ status da API.
-- GET /api/version/latest ñ release atual.
-- POST /api/updates/run ñ dispara atualizaÁ„o (payload opcional { "release": "YYYY-MM" }).
-- GET /api/search/<dataset> ñ filtros e paginaÁ„o para empresas, estabelecimentos, socios, simples.
-- GET /api/export/<dataset> ñ exporta CSV respeitando filtros.
+- `GET /api/health`
+- `GET /api/version/latest`
+- `GET /api/updates/status`
+- `POST /api/updates/run`
+- `GET /api/search/<dataset>` (`empresas`, `estabelecimentos`, `socios`, `simples`)
+- `GET /api/export/<dataset>` ‚Äì CSV
+- `GET /api/stats` ‚Äì contagem total + release atual
 
-## Frontend
+## Logs e acompanhamento
 
-- SeleÁ„o de dataset e filtros contextuais.
-- Tabela responsiva com paginaÁ„o.
-- ExportaÁ„o em CSV com o mesmo conjunto de filtros.
-- Painel para acompanhar a vers„o carregada e disparar novas coletas.
+- `docker compose logs backend -f` ‚Äì mostra cada etapa (download ‚Üí extra√ß√£o ‚Üí COPY) com contagens e barras de progresso.
+- `docker compose logs postgres -f` ‚Äì monitora checkpoints/WAL.
+- `GET /api/stats` ‚Äì verifica crescimento das tabelas sem rodar consultas pesadas manualmente.
 
-## PrÛximos passos sugeridos
+## Pr√≥ximos passos sugeridos
 
-- Adicionar autenticaÁ„o/controle de acesso para o gatilho de atualizaÁ„o.
-- Implementar cache ou views materializadas para acelerar buscas complexas.
-- Expandir suporte a demais arquivos auxiliares (CNAEs, municÌpios, motivos, qualificaÁıes) para filtros mais ricos.
-- Configurar workers separados (ex.: Celery/RQ) para tarefas de atualizaÁ„o e monitoramento.
+1. Ajustar par√¢metros do PostgreSQL conforme hardware (shared_buffers, work_mem, max_wal_size...).
+2. Adicionar autentica√ß√£o nos endpoints sens√≠veis (`/api/updates/run`, `/api/export`).
+3. Incluir os arquivos auxiliares (CNAE, munic√≠pios etc.) para enriquecer filtros.
+4. Integrar observabilidade (Prometheus + Grafana ou pg_stat_statements) para acompanhar ingest√µes/consultas.

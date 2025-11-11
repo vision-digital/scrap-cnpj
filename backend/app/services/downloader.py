@@ -28,14 +28,17 @@ class DownloadManager:
         ensure_dir(self.data_dir)
         self._http = httpx.Client(timeout=settings.http_timeout)
 
-    def download_release(self, release: str) -> List[Path]:
+    def download_release(self, release: str, reuse_existing: bool = True) -> List[Path]:
         target_dir = ensure_dir(self.data_dir / release)
+        if reuse_existing and any(target_dir.glob("*.zip")):
+            logger.info("Reusing previously downloaded archives in %s", target_dir)
+            return sorted(target_dir.glob("*.zip"))
         files = self.client.list_files(release)
         downloaded: List[Path] = []
         for remote in files:
             local_path = target_dir / remote.name
             if local_path.exists() and local_path.stat().st_size > 0:
-                logger.info("Arquivo %s já existe, pulando download", local_path.name)
+                logger.info("File %s already exists, skipping download", local_path.name)
                 downloaded.append(local_path)
                 continue
             self._download_file(remote, local_path)
