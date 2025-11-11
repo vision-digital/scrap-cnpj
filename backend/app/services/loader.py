@@ -3,15 +3,18 @@
 import csv
 import io
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Sequence
+from typing import Callable, Dict, Iterable, List, Sequence, Set
 
 from tqdm import tqdm
 
+from app.core.config import get_settings
 from app.db.postgres import get_connection
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 @dataclass(frozen=True)
@@ -162,16 +165,37 @@ def identify_dataset(file_path: Path) -> DatasetConfig | None:
 
 
 class Loader:
+    def __init__(self):
+        self._truncated_tables: Set[str] = set()
+
     def load_files(self, files: Iterable[Path]) -> None:
         for file_path in files:
             dataset = identify_dataset(file_path)
             if not dataset:
                 logger.info("File %s ignored (unknown dataset)", file_path.name)
                 continue
+
+            # Truncate table before first file
+            if dataset.table not in self._truncated_tables:
+                self._truncate_table(dataset.table)
+                self._truncated_tables.add(dataset.table)
+
             logger.info("Copying %s into %s", file_path.name, dataset.table)
             self._copy_file(file_path, dataset)
 
+    def _truncate_table(self, table_name: str) -> None:
+        """Truncate table before loading to avoid duplicates."""
+        logger.info("Truncating table %s", table_name)
+        with get_connection() as conn, conn.cursor() as cur:
+            cur.execute(f"TRUNCATE TABLE {table_name} CASCADE")
+            conn.commit()
+        logger.info("Table %s truncated", table_name)
+
     def _copy_file(self, file_path: Path, dataset: DatasetConfig) -> None:
+        """Load file using streaming COPY - one transaction per file."""
+        start_time = time.time()
+        last_log_time = start_time
+
         with get_connection() as conn, conn.cursor() as cur, open(
             file_path, encoding="latin-1", newline=""
         ) as handle:
@@ -181,45 +205,61 @@ class Loader:
                 "FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"', NULL '')"
             )
 
-            with cur.copy(copy_sql) as copy, tqdm(
-                desc=f"{dataset.table}:{file_path.name}", unit="rows"
-            ) as progress:
-                buffer = io.StringIO()
-                writer = csv.writer(buffer, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            total_rows = 0
+            buffer = io.StringIO()
+            csv_writer = csv.writer(buffer, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
-                batch = []
-                for row in reader:
-                    if not row or all(not field.strip() for field in row):
-                        continue
+            with tqdm(desc=f"{dataset.table}:{file_path.name}", unit="rows", mininterval=0.5) as progress:
+                # Open COPY once for entire file - streaming mode
+                with cur.copy(copy_sql) as copy:
+                    for row in reader:
+                        if not row or all(not field.strip() for field in row):
+                            continue
 
-                    if len(row) == 1 and "\t" in row[0]:
-                        row = row[0].split("\t")
+                        if len(row) == 1 and "\t" in row[0]:
+                            row = row[0].split("\t")
 
-                    try:
-                        built = dataset.builder(row)
-                    except Exception:
-                        logger.exception("Failed to parse row in %s: %s", file_path.name, row[:3])
-                        continue
+                        try:
+                            built = dataset.builder(row)
+                        except Exception:
+                            logger.exception("Failed to parse row in %s: %s", file_path.name, row[:3])
+                            continue
 
-                    batch.append(built)
-                    progress.update()
+                        # Write row to buffer
+                        csv_writer.writerow(built)
+                        total_rows += 1
+                        progress.update()
 
-                    if len(batch) >= 5000:
-                        self._write_batch(writer, buffer, copy, batch)
-                        batch = []
+                        # Flush buffer to COPY every 50k rows (keeps memory low, maintains streaming)
+                        if total_rows % 50000 == 0:
+                            buffer.seek(0)
+                            copy.write(buffer.read())
+                            buffer.seek(0)
+                            buffer.truncate()
 
-                # Write remaining rows
-                if batch:
-                    self._write_batch(writer, buffer, copy, batch)
+                            # Log progress every 10 seconds
+                            now = time.time()
+                            if now - last_log_time >= 10:
+                                elapsed = now - start_time
+                                rate = total_rows / elapsed if elapsed > 0 else 0
+                                logger.info(
+                                    "%s: %s rows loaded (%.1f rows/sec)",
+                                    file_path.name, total_rows, rate
+                                )
+                                last_log_time = now
 
-            conn.commit()
-            logger.info("Finished loading %s", file_path.name)
+                    # Flush any remaining data in buffer
+                    buffer.seek(0)
+                    remaining = buffer.read()
+                    if remaining:
+                        copy.write(remaining)
 
-    @staticmethod
-    def _write_batch(writer: csv.writer, buffer: io.StringIO, copy, batch: list) -> None:
-        buffer.seek(0)
-        buffer.truncate()
-        for row in batch:
-            writer.writerow(row)
-        buffer.seek(0)
-        copy.write(buffer.read())
+                # COPY closed, now commit once
+                conn.commit()
+
+            elapsed = time.time() - start_time
+            rate = total_rows / elapsed if elapsed > 0 else 0
+            logger.info(
+                "✓ %s: %s rows in %.1f sec (%.1f rows/sec)",
+                file_path.name, total_rows, elapsed, rate
+            )

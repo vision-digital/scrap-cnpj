@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     raw_subdir: str = Field(default="raw")
     staging_subdir: str = Field(default="staging")
     batch_size: int = Field(default=50_000)
+    commit_batch_size: int = Field(default=50_000)
     http_timeout: int = Field(default=120)
     max_parallel_downloads: int = Field(default=2)
     reuse_downloads: bool = Field(default=True)
