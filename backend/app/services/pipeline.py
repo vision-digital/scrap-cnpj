@@ -24,8 +24,23 @@ class Pipeline:
 
     def run(self, release: str | None = None) -> str:
         logger.info("Starting pipeline for release %s", release or "latest")
-        with ReceitaFederalClient() as client:
-            target_release = release or client.latest_release()
+
+        # Discover target release
+        if release:
+            target_release = release
+        else:
+            # Try to find existing data in staging first
+            target_release = self._find_existing_release()
+            if not target_release:
+                # Fall back to fetching from Receita Federal
+                try:
+                    with ReceitaFederalClient() as client:
+                        target_release = client.latest_release()
+                except Exception as e:
+                    logger.error("Failed to fetch latest release: %s", e)
+                    raise RuntimeError("No release specified and cannot fetch from Receita Federal. Check network connection.") from e
+
+        logger.info("Target release: %s", target_release)
         current = self.versioning.current_release()
         if current and current.release == target_release and current.status == "completed":
             logger.info("Database already at version %s", target_release)
@@ -57,6 +72,26 @@ class Pipeline:
         for path, should_remove in targets:
             if should_remove:
                 self._safe_rmtree(path)
+
+    def _find_existing_release(self) -> str | None:
+        """Find most recent release from existing staging data."""
+        staging_dir = self.extractor.staging_dir
+        if not staging_dir.exists():
+            return None
+
+        # List all release directories (format: YYYY-MM)
+        releases = [
+            d.name for d in staging_dir.iterdir()
+            if d.is_dir() and len(d.name) == 7 and d.name[4] == '-'
+        ]
+
+        if not releases:
+            return None
+
+        # Return most recent
+        releases.sort(reverse=True)
+        logger.info("Found existing releases in staging: %s", releases)
+        return releases[0]
 
     @staticmethod
     def _safe_rmtree(path: Path) -> None:

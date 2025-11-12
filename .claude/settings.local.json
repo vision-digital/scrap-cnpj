@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(docker compose logs:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(tr:*)"
     ],
     "deny": [],
     "ask": []
