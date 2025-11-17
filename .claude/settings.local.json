@@ -5,7 +5,17 @@
       "Bash(docker compose:*)",
       "Bash(curl:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(tr:*)"
+      "Bash(tr:*)",
+      "Bash(unzip:*)",
+      "Bash(awk:*)",
+      "Bash(docker system:*)",
+      "Bash(python3:*)",
+      "Bash(python -m flake8:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker volume:*)",
+      "Bash(cat:*)",
+      "Bash(cut:*)"
     ],
     "deny": [],
     "ask": []

@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime
-from typing import Dict, Iterable
+from typing import Iterable
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -11,13 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.models import Empresa, Estabelecimento, Simples, Socio
+from app.models import Estabelecimento, Socio  # REMOVED: Empresa, Simples (denormalized)
 from app.schemas.entities import (
-    EmpresaSchema,
     EstabelecimentoSchema,
-    SimplesSchema,
     SocioSchema,
 )
+# REMOVED: EmpresaSchema, SimplesSchema (data now in EstabelecimentoSchema)
 
 router = APIRouter(prefix="/export", tags=["relatorios"])
 
@@ -39,26 +38,8 @@ def _stream_models(db: Session, stmt, schema) -> Iterable[bytes]:
         buffer.truncate(0)
 
 
-@router.get("/empresas")
-def export_empresas(
-    razao_social: str | None = Query(None),
-    natureza_juridica: str | None = Query(None),
-    porte: str | None = Query(None),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    stmt = select(Empresa)
-    if razao_social:
-        stmt = stmt.where(Empresa.razao_social.ilike(f"%{razao_social}%"))
-    if natureza_juridica:
-        stmt = stmt.where(Empresa.natureza_juridica == natureza_juridica)
-    if porte:
-        stmt = stmt.where(Empresa.porte_empresa == porte)
-    filename = f"empresas_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
-    return StreamingResponse(
-        _stream_models(db, stmt, EmpresaSchema),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+# REMOVED: /empresas export endpoint - data now in /estabelecimentos (denormalized)
+# Use /estabelecimentos with razao_social, natureza_juridica, or porte filters instead
 
 
 @router.get("/estabelecimentos")
@@ -99,20 +80,5 @@ def export_socios(
     )
 
 
-@router.get("/simples")
-def export_simples(
-    opcao_simples: str | None = Query(None),
-    opcao_mei: str | None = Query(None),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    stmt = select(Simples)
-    if opcao_simples:
-        stmt = stmt.where(Simples.opcao_simples == opcao_simples)
-    if opcao_mei:
-        stmt = stmt.where(Simples.opcao_mei == opcao_mei)
-    filename = f"simples_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
-    return StreamingResponse(
-        _stream_models(db, stmt, SimplesSchema),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+# REMOVED: /simples export endpoint - data now in /estabelecimentos (denormalized)
+# Use /estabelecimentos with opcao_simples or opcao_mei filters instead

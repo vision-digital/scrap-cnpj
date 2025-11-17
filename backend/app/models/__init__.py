@@ -1,11 +1,10 @@
 from app.models.base import Base
-from app.models.entities import DataVersion, Empresa, Estabelecimento, Simples, Socio
+from app.models.entities import DataVersion, Estabelecimento, Socio
+# REMOVED: Empresa, Simples (data now denormalized into Estabelecimento)
 
 __all__ = [
     "Base",
-    "Empresa",
     "Estabelecimento",
     "Socio",
-    "Simples",
     "DataVersion",
 ]

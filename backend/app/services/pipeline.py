@@ -7,7 +7,7 @@ from pathlib import Path
 from app.core.config import get_settings
 from app.services.downloader import DownloadManager
 from app.services.extractor import Extractor
-from app.services.loader import Loader
+from app.services.loader_v3 import LoaderV3  # NEW: Streaming denormalized loader (memory efficient)
 from app.services.receita_client import ReceitaFederalClient
 from app.services.versioning import VersioningService
 
@@ -20,7 +20,7 @@ class Pipeline:
         self.versioning = VersioningService()
         self.downloader = DownloadManager()
         self.extractor = Extractor()
-        self.loader = Loader()
+        self.loader = LoaderV3()  # NEW: Streaming denormalized loader (memory efficient)
 
     def run(self, release: str | None = None) -> str:
         logger.info("Starting pipeline for release %s", release or "latest")

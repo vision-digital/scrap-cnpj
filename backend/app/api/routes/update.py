@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Body
 
+from app.core.config import get_settings
 from app.services.pipeline import Pipeline
 from app.services.versioning import VersioningService
+# REMOVED: Loader (old loader replaced by LoaderV2 in pipeline)
 
 router = APIRouter(prefix="/updates", tags=["atualizacao"])
 versioning = VersioningService()
+settings = get_settings()
 
 
 def _trigger_update(release: str | None) -> None:
@@ -35,3 +38,8 @@ def update_status() -> dict:
         "started_at": current.started_at,
         "finished_at": current.finished_at,
     }
+
+
+# REMOVED: /load-tables endpoint - LoaderV2 requires sequential loading with interdependencies
+# The denormalized schema needs all datasets to be processed together (estabelecimentos → empresas → simples → merge)
+# Partial table loading is no longer supported with the new architecture

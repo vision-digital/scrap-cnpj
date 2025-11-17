@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     staging_subdir: str = Field(default="staging")
     batch_size: int = Field(default=50_000)
     commit_batch_size: int = Field(default=1_000_000)
-    http_timeout: int = Field(default=120)
-    max_parallel_downloads: int = Field(default=2)
+    http_timeout: int = Field(default=300)  # 5 minutes for large files
+    max_parallel_downloads: int = Field(default=5)  # 5 simultaneous downloads
+    download_start_delay: int = Field(default=5)  # Delay in seconds between starting each download
     reuse_downloads: bool = Field(default=True)
     reuse_extractions: bool = Field(default=True)
     cleanup_raw_after_load: bool = Field(default=False)
